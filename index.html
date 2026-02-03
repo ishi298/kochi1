@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>現在地からランダム散歩（APIキー不要）</title>
+  <title>気分で決まるランダム散歩</title>
 
   <!-- Leaflet -->
   <link
@@ -32,6 +32,12 @@
 <body>
 
 <div id="controls">
+  <select id="mood">
+    <option value="relax">のんびり</option>
+    <option value="city">街歩き</option>
+    <option value="adventure">冒険</option>
+  </select>
+
   <select id="distance">
     <option value="1">1km</option>
     <option value="2">2km</option>
@@ -39,13 +45,30 @@
     <option value="5">5km</option>
   </select>
 
-  <button onclick="generateRoute()">現在地から散歩する</button>
+  <button onclick="generateRoute()">散歩ルートを決める</button>
 </div>
 
 <div id="map"></div>
 
 <script>
-const FALLBACK_LOCATION = { lat: 33.5597, lng: 133.5311 }; // 高知城
+// 位置取得失敗時の保険（高知城）
+const FALLBACK_LOCATION = { lat: 33.5597, lng: 133.5311 };
+
+// 気分ごとのランダム性設定
+const MOOD_SETTINGS = {
+  relax: {
+    angleRange: Math.PI / 3,   // 方向ブレ小
+    distanceRate: 0.8
+  },
+  city: {
+    angleRange: Math.PI,       // 中くらい
+    distanceRate: 1.0
+  },
+  adventure: {
+    angleRange: Math.PI * 2,   // 完全ランダム
+    distanceRate: 1.2
+  }
+};
 
 const map = L.map("map").setView(
   [FALLBACK_LOCATION.lat, FALLBACK_LOCATION.lng],
@@ -58,7 +81,7 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 
 let routeLayer;
 
-// 現在地取得（失敗時はフォールバック）
+// 現在地取得
 function getCurrentLocation() {
   return new Promise(resolve => {
     if (!navigator.geolocation) {
@@ -79,10 +102,17 @@ function getCurrentLocation() {
   });
 }
 
-// 距離とランダム角度からゴール生成
-function createRandomGoal(lat, lng, distanceKm) {
-  const angle = Math.random() * Math.PI * 2;
-  const delta = distanceKm * 0.009;
+// 気分 × 距離でゴール生成
+function createRandomGoal(lat, lng, distanceKm, mood) {
+  const setting = MOOD_SETTINGS[mood];
+
+  const baseAngle = Math.random() * 2 * Math.PI;
+  const angle =
+    baseAngle +
+    (Math.random() - 0.5) * setting.angleRange;
+
+  const delta =
+    distanceKm * setting.distanceRate * 0.009;
 
   return {
     lat: lat + Math.cos(angle) * delta,
@@ -95,9 +125,16 @@ async function generateRoute() {
     map.removeLayer(routeLayer);
   }
 
+  const mood = document.getElementById("mood").value;
   const distanceKm = Number(document.getElementById("distance").value);
+
   const start = await getCurrentLocation();
-  const goal = createRandomGoal(start.lat, start.lng, distanceKm);
+  const goal = createRandomGoal(
+    start.lat,
+    start.lng,
+    distanceKm,
+    mood
+  );
 
   map.setView([start.lat, start.lng], 15);
 
