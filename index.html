@@ -2,23 +2,31 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>高知お散歩ルートメーカー</title>
+  <title>高知ランダム散歩メーカー</title>
+
+  <!-- Leaflet -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
   <style>
     body {
-      font-family: sans-serif;
       margin: 0;
+      font-family: sans-serif;
     }
     #controls {
       padding: 10px;
-      background: #f0f8f5;
+      background: #eef7f3;
     }
     #map {
-      width: 100%;
       height: 80vh;
+      width: 100%;
     }
     select, button {
-      margin-right: 10px;
       padding: 6px;
+      margin-right: 10px;
     }
   </style>
 </head>
@@ -43,18 +51,12 @@
     </select>
   </label>
 
-  <button onclick="generateRoute()">ルートを決める</button>
+  <button onclick="generateRoute()">散歩ルートを決める</button>
 </div>
 
 <div id="map"></div>
 
 <script>
-const GOOGLE_MAPS_API_KEY = "YOUR_API_KEY";
-
-let map;
-let directionsService;
-let directionsRenderer;
-
 // 高知県内の候補スポット
 const spots = {
   relax: [
@@ -71,52 +73,61 @@ const spots = {
   ]
 };
 
-function initMap() {
-  map = new google.maps.Map(document.getElementById("map"), {
-    center: { lat: 33.5597, lng: 133.5311 },
-    zoom: 13
-  });
+const map = L.map("map").setView([33.5597, 133.5311], 13);
 
-  directionsService = new google.maps.DirectionsService();
-  directionsRenderer = new google.maps.DirectionsRenderer();
-  directionsRenderer.setMap(map);
-}
+// OpenStreetMap
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  attribution: "© OpenStreetMap contributors"
+}).addTo(map);
+
+let routeLayer;
 
 function generateRoute() {
+  if (routeLayer) {
+    map.removeLayer(routeLayer);
+  }
+
   const mood = document.getElementById("mood").value;
   const distanceKm = Number(document.getElementById("distance").value);
 
-  const candidates = spots[mood];
-  const start = candidates[Math.floor(Math.random() * candidates.length)];
+  const start =
+    spots[mood][Math.floor(Math.random() * spots[mood].length)];
 
-  // ランダムに少しずらしたゴールを作る
-  const delta = distanceKm * 0.005;
+  // 距離に応じてゴールをランダム生成
+  const delta = distanceKm * 0.008;
   const goal = {
     lat: start.lat + (Math.random() - 0.5) * delta,
     lng: start.lng + (Math.random() - 0.5) * delta
   };
 
-  directionsService.route(
-    {
-      origin: start,
-      destination: goal,
-      travelMode: google.maps.TravelMode.WALKING
-    },
-    (result, status) => {
-      if (status === "OK") {
-        directionsRenderer.setDirections(result);
-      } else {
-        alert("ルートを生成できませんでした");
-      }
-    }
-  );
-}
-</script>
+  routeLayer = L.layerGroup().addTo(map);
 
-<script async
-  src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initMap">
+  // スタート
+  L.marker([start.lat, start.lng])
+    .addTo(routeLayer)
+    .bindPopup(`スタート：${start.name}`)
+    .openPopup();
+
+  // ゴール
+  L.marker([goal.lat, goal.lng])
+    .addTo(routeLayer)
+    .bindPopup("ゴール");
+
+  // ルート（直線）
+  L.polyline(
+    [
+      [start.lat, start.lng],
+      [goal.lat, goal.lng]
+    ],
+    { weight: 5 }
+  ).addTo(routeLayer);
+
+  map.fitBounds([
+    [start.lat, start.lng],
+    [goal.lat, goal.lng]
+  ]);
+}
 </script>
 
 </body>
 </html>
-
