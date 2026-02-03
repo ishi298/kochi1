@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8" />
-  <title>高知・APIキーなし散歩ルート</title>
+  <meta charset="UTF-8">
+  <title>現在地からランダム散歩（APIキー不要）</title>
 
   <!-- Leaflet -->
   <link
@@ -12,55 +12,45 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <style>
-    body { margin: 0; font-family: sans-serif; }
+    body {
+      margin: 0;
+      font-family: sans-serif;
+    }
     #controls {
       padding: 10px;
       background: #eef7f3;
     }
-    #map { height: 80vh; }
+    #map {
+      height: 80vh;
+    }
     select, button {
       padding: 6px;
-      margin-right: 10px;
+      margin-right: 8px;
     }
   </style>
 </head>
 <body>
 
 <div id="controls">
-  <select id="mood">
-    <option value="relax">のんびり</option>
-    <option value="nature">自然</option>
-    <option value="city">街歩き</option>
-  </select>
-
   <select id="distance">
     <option value="1">1km</option>
+    <option value="2">2km</option>
     <option value="3">3km</option>
     <option value="5">5km</option>
   </select>
 
-  <button onclick="generateRoute()">散歩ルート生成</button>
+  <button onclick="generateRoute()">現在地から散歩する</button>
 </div>
 
 <div id="map"></div>
 
 <script>
-// 高知県内スポット
-const spots = {
-  relax: [
-    { name: "高知城", lat: 33.5597, lng: 133.5311 },
-    { name: "鏡川", lat: 33.5535, lng: 133.5207 }
-  ],
-  nature: [
-    { name: "桂浜", lat: 33.4968, lng: 133.5714 }
-  ],
-  city: [
-    { name: "はりまや橋", lat: 33.5586, lng: 133.5415 },
-    { name: "高知駅", lat: 33.5662, lng: 133.5431 }
-  ]
-};
+const FALLBACK_LOCATION = { lat: 33.5597, lng: 133.5311 }; // 高知城
 
-const map = L.map("map").setView([33.5597, 133.5311], 13);
+const map = L.map("map").setView(
+  [FALLBACK_LOCATION.lat, FALLBACK_LOCATION.lng],
+  13
+);
 
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution: "© OpenStreetMap contributors"
@@ -68,37 +58,71 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 
 let routeLayer;
 
-async function generateRoute() {
-  if (routeLayer) map.removeLayer(routeLayer);
+// 現在地取得（失敗時はフォールバック）
+function getCurrentLocation() {
+  return new Promise(resolve => {
+    if (!navigator.geolocation) {
+      resolve(FALLBACK_LOCATION);
+      return;
+    }
 
-  const mood = document.getElementById("mood").value;
-  const distanceKm = Number(document.getElementById("distance").value);
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        resolve({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude
+        });
+      },
+      () => resolve(FALLBACK_LOCATION),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  });
+}
 
-  const start = spots[mood][Math.floor(Math.random() * spots[mood].length)];
+// 距離とランダム角度からゴール生成
+function createRandomGoal(lat, lng, distanceKm) {
+  const angle = Math.random() * Math.PI * 2;
+  const delta = distanceKm * 0.009;
 
-  // 距離に応じてゴール生成
-  const delta = distanceKm * 0.008;
-  const goal = {
-    lat: start.lat + (Math.random() - 0.5) * delta,
-    lng: start.lng + (Math.random() - 0.5) * delta
+  return {
+    lat: lat + Math.cos(angle) * delta,
+    lng: lng + Math.sin(angle) * delta
   };
+}
 
-  const url = `https://router.project-osrm.org/route/v1/foot/` +
+async function generateRoute() {
+  if (routeLayer) {
+    map.removeLayer(routeLayer);
+  }
+
+  const distanceKm = Number(document.getElementById("distance").value);
+  const start = await getCurrentLocation();
+  const goal = createRandomGoal(start.lat, start.lng, distanceKm);
+
+  map.setView([start.lat, start.lng], 15);
+
+  const url =
+    `https://router.project-osrm.org/route/v1/foot/` +
     `${start.lng},${start.lat};${goal.lng},${goal.lat}` +
     `?overview=full&geometries=geojson`;
 
   const res = await fetch(url);
   const data = await res.json();
 
-  const route = data.routes[0].geometry;
+  if (!data.routes || !data.routes.length) {
+    alert("ルートを生成できませんでした");
+    return;
+  }
 
-  routeLayer = L.geoJSON(route, {
+  routeLayer = L.layerGroup().addTo(map);
+
+  L.geoJSON(data.routes[0].geometry, {
     style: { weight: 5 }
-  }).addTo(map);
+  }).addTo(routeLayer);
 
   L.marker([start.lat, start.lng])
     .addTo(routeLayer)
-    .bindPopup(`スタート：${start.name}`)
+    .bindPopup("スタート（現在地）")
     .openPopup();
 
   L.marker([goal.lat, goal.lng])
