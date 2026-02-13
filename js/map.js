@@ -1,7 +1,3 @@
-// ==============================
-// 初期設定
-// ==============================
-
 const FALLBACK_LOCATION = { lat: 33.5597, lng: 133.5311 };
 
 const MOOD_SETTINGS = {
@@ -28,19 +24,15 @@ let walkData = {
   startTime: null
 };
 
-// ==============================
-// カスタムアイコン
-// ==============================
-
 const startIcon = L.divIcon({
-  className: "custom-marker start-marker",
+  className: "custom-marker",
   html: "🏁",
   iconSize: [30, 30],
   iconAnchor: [15, 30]
 });
 
 const checkpointIcon = L.divIcon({
-  className: "custom-marker checkpoint-marker",
+  className: "custom-marker",
   html: "📍",
   iconSize: [26, 26],
   iconAnchor: [13, 26]
@@ -53,17 +45,12 @@ const goalIcon = L.divIcon({
   iconAnchor: [17, 34]
 });
 
-// ==============================
-// 位置取得
-// ==============================
-
 function getCurrentLocation() {
   return new Promise(resolve => {
     if (!navigator.geolocation) {
       resolve(FALLBACK_LOCATION);
       return;
     }
-
     navigator.geolocation.getCurrentPosition(
       pos => resolve({
         lat: pos.coords.latitude,
@@ -74,10 +61,6 @@ function getCurrentLocation() {
     );
   });
 }
-
-// ==============================
-// ランダム地点生成
-// ==============================
 
 function createRandomGoal(lat, lng, distanceKm, mood) {
   const setting = MOOD_SETTINGS[mood];
@@ -90,10 +73,6 @@ function createRandomGoal(lat, lng, distanceKm, mood) {
     lng: lng + Math.sin(angle) * delta
   };
 }
-
-// ==============================
-// 往路生成（チェックポイント型）
-// ==============================
 
 async function generateRoute() {
   if (routeLayer) map.removeLayer(routeLayer);
@@ -120,47 +99,24 @@ async function generateRoute() {
 
   const res = await fetch(url);
   const data = await res.json();
-
-  if (!data.routes?.length) {
-    alert("ルート生成失敗");
-    return;
-  }
+  if (!data.routes?.length) return alert("ルート生成失敗");
 
   routeLayer = L.layerGroup().addTo(map);
 
-  // 赤ルート
   L.geoJSON(data.routes[0].geometry, {
     style: { weight: 6, color: "#ff6b6b" }
   }).addTo(routeLayer);
 
-  L.marker([start.lat, start.lng], { icon: startIcon })
-    .addTo(routeLayer)
-    .bindPopup("<b>スタート</b><br>ここから散歩開始！");
-
-  L.marker([cp1.lat, cp1.lng], { icon: checkpointIcon })
-    .addTo(routeLayer)
-    .bindPopup("チェックポイント①");
-
-  L.marker([cp2.lat, cp2.lng], { icon: checkpointIcon })
-    .addTo(routeLayer)
-    .bindPopup("チェックポイント②");
-
-  L.marker([goal.lat, goal.lng], { icon: goalIcon })
-    .addTo(routeLayer)
-    .bindPopup("<b>ゴール！</b><br>おつかれさま！");
+  L.marker([start.lat, start.lng], { icon: startIcon }).addTo(routeLayer);
+  L.marker([cp1.lat, cp1.lng], { icon: checkpointIcon }).addTo(routeLayer);
+  L.marker([cp2.lat, cp2.lng], { icon: checkpointIcon }).addTo(routeLayer);
+  L.marker([goal.lat, goal.lng], { icon: goalIcon }).addTo(routeLayer);
 
   map.fitBounds(routeLayer.getBounds());
 }
 
-// ==============================
-// 帰路生成（別ルート）
-// ==============================
-
 async function generateReturnRoute() {
-  if (!walkData.goal || !walkData.start) {
-    alert("先に散歩を開始してください");
-    return;
-  }
+  if (!walkData.goal) return alert("先に散歩開始してください");
 
   if (routeLayer) map.removeLayer(routeLayer);
 
@@ -184,13 +140,50 @@ async function generateReturnRoute() {
 
   const res = await fetch(url);
   const data = await res.json();
-
-  if (!data.routes?.length) {
-    alert("帰路生成失敗");
-    return;
-  }
+  if (!data.routes?.length) return alert("帰路生成失敗");
 
   routeLayer = L.layerGroup().addTo(map);
 
-  // 青ルート
-  L.geoJSON(d
+  L.geoJSON(data.routes[0].geometry, {
+    style: { weight: 6, color: "#4dabf7" }
+  }).addTo(routeLayer);
+
+  L.marker([walkData.goal.lat, walkData.goal.lng], { icon: goalIcon }).addTo(routeLayer);
+  L.marker([walkData.start.lat, walkData.start.lng], { icon: startIcon }).addTo(routeLayer);
+
+  map.fitBounds(routeLayer.getBounds());
+}
+
+function finishWalk() {
+  if (!walkData.startTime) return alert("まだ開始していません");
+
+  const duration = Math.round((new Date() - walkData.startTime)/60000);
+
+  const logEntry = {
+    date: new Date().toLocaleDateString(),
+    mood: walkData.mood,
+    distance: walkData.distanceKm,
+    duration
+  };
+
+  const logs = JSON.parse(localStorage.getItem("walkLogs") || "[]");
+  logs.push(logEntry);
+  localStorage.setItem("walkLogs", JSON.stringify(logs));
+
+  displayLogs();
+  alert("散歩を記録しました！");
+}
+
+function displayLogs() {
+  const logs = JSON.parse(localStorage.getItem("walkLogs") || "[]");
+  const area = document.getElementById("logArea");
+
+  area.innerHTML = "<b>散歩履歴（直近5件）</b><br>";
+
+  logs.slice(-5).reverse().forEach(log => {
+    area.innerHTML +=
+      `${log.date}｜${log.mood}｜${log.distance}km｜${log.duration}分<br>`;
+  });
+}
+
+displayLogs();
