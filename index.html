@@ -1,32 +1,20 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<title>気分で決まるランダム散歩＋ログ機能</title>
+  <meta charset="UTF-8">
+  <title>気分で決まるランダム散歩</title>
 
-<link
-  rel="stylesheet"
-  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
+  <link rel="stylesheet" href="style.css">
 
-<style>
-body { margin: 0; font-family: sans-serif; }
-#controls { padding: 10px; background: #eef7f3; }
-#map { height: 70vh; }
-select, button {
-  padding: 8px 12px;
-  margin-right: 8px;
-  border-radius: 6px;
-}
-#logArea {
-  padding: 10px;
-  font-size: 14px;
-  background: #f8f8f8;
-}
-</style>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
+
+<h1 class="app-title">🚶‍♂️ 気分で散歩アプリ</h1>
 
 <div id="controls">
   <select id="mood">
@@ -50,198 +38,6 @@ select, button {
 <div id="map"></div>
 <div id="logArea"></div>
 
-<script>
-const FALLBACK_LOCATION = { lat: 33.5597, lng: 133.5311 };
-
-const MOOD_SETTINGS = {
-  relax: { angleRange: Math.PI / 3, distanceRate: 0.8 },
-  city: { angleRange: Math.PI, distanceRate: 1.0 },
-  adventure: { angleRange: Math.PI * 2, distanceRate: 1.2 }
-};
-
-let map = L.map("map").setView(
-  [FALLBACK_LOCATION.lat, FALLBACK_LOCATION.lng], 13
-);
-
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  attribution: "© OpenStreetMap contributors"
-}).addTo(map);
-
-let routeLayer;
-
-let walkData = {
-  start: null,
-  goal: null,
-  mood: null,
-  distanceKm: null,
-  startTime: null
-};
-
-function getCurrentLocation() {
-  return new Promise(resolve => {
-    if (!navigator.geolocation) {
-      resolve(FALLBACK_LOCATION);
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      pos => resolve({
-        lat: pos.coords.latitude,
-        lng: pos.coords.longitude
-      }),
-      () => resolve(FALLBACK_LOCATION),
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
-  });
-}
-
-function createRandomGoal(lat, lng, distanceKm, mood) {
-  const setting = MOOD_SETTINGS[mood];
-  const baseAngle = Math.random() * 2 * Math.PI;
-  const angle = baseAngle + (Math.random() - 0.5) * setting.angleRange;
-  const delta = distanceKm * setting.distanceRate * 0.009;
-
-  return {
-    lat: lat + Math.cos(angle) * delta,
-    lng: lng + Math.sin(angle) * delta
-  };
-}
-
-async function generateRoute() {
-  if (routeLayer) map.removeLayer(routeLayer);
-
-  const mood = document.getElementById("mood").value;
-  const distanceKm = Number(document.getElementById("distance").value);
-
-  const start = await getCurrentLocation();
-  walkData = { start, mood, distanceKm, startTime: new Date() };
-
-  const cp1 = createRandomGoal(start.lat, start.lng, distanceKm/3, mood);
-  const cp2 = createRandomGoal(cp1.lat, cp1.lng, distanceKm/3, mood);
-  const goal = createRandomGoal(cp2.lat, cp2.lng, distanceKm/3, mood);
-
-  walkData.goal = goal;
-
-  const url =
-    `https://router.project-osrm.org/route/v1/foot/` +
-    `${start.lng},${start.lat};` +
-    `${cp1.lng},${cp1.lat};` +
-    `${cp2.lng},${cp2.lat};` +
-    `${goal.lng},${goal.lat}` +
-    `?overview=full&geometries=geojson`;
-
-  const res = await fetch(url);
-  const data = await res.json();
-
-  if (!data.routes?.length) {
-    alert("ルート生成失敗");
-    return;
-  }
-
-  routeLayer = L.layerGroup().addTo(map);
-
-  L.geoJSON(data.routes[0].geometry, { style: { weight: 5 } })
-    .addTo(routeLayer);
-
-  L.marker([start.lat, start.lng]).addTo(routeLayer).bindPopup("スタート");
-  L.marker([cp1.lat, cp1.lng]).addTo(routeLayer).bindPopup("チェック1");
-  L.marker([cp2.lat, cp2.lng]).addTo(routeLayer).bindPopup("チェック2");
-  L.marker([goal.lat, goal.lng]).addTo(routeLayer).bindPopup("ゴール");
-
-  map.fitBounds(routeLayer.getBounds());
-}
-
-async function generateReturnRoute() {
-  if (!walkData.goal || !walkData.start) {
-    alert("先に散歩を開始してください");
-    return;
-  }
-
-  if (routeLayer) map.removeLayer(routeLayer);
-
-  const cp1 = createRandomGoal(
-    walkData.goal.lat, walkData.goal.lng,
-    walkData.distanceKm/3, walkData.mood
-  );
-  const cp2 = createRandomGoal(
-    cp1.lat, cp1.lng,
-    walkData.distanceKm/3, walkData.mood
-  );
-
-  const url =
-    `https://router.project-osrm.org/route/v1/foot/` +
-    `${walkData.goal.lng},${walkData.goal.lat};` +
-    `${cp1.lng},${cp1.lat};` +
-    `${cp2.lng},${cp2.lat};` +
-    `${walkData.start.lng},${walkData.start.lat}` +
-    `?overview=full&geometries=geojson`;
-
-  const res = await fetch(url);
-  const data = await res.json();
-
-  if (!data.routes?.length) {
-    alert("帰路生成失敗");
-    return;
-  }
-
-  routeLayer = L.layerGroup().addTo(map);
-
-  L.geoJSON(data.routes[0].geometry, { style: { weight: 5 } })
-    .addTo(routeLayer);
-
-  L.marker([walkData.goal.lat, walkData.goal.lng])
-    .addTo(routeLayer)
-    .bindPopup("帰路スタート");
-
-  L.marker([walkData.start.lat, walkData.start.lng])
-    .addTo(routeLayer)
-    .bindPopup("元の場所");
-
-  map.fitBounds(routeLayer.getBounds());
-}
-
-function finishWalk() {
-  if (!walkData.startTime) {
-    alert("散歩を開始していません");
-    return;
-  }
-
-  const duration = Math.round(
-    (new Date() - walkData.startTime) / 60000
-  );
-
-  const logEntry = {
-    date: new Date().toLocaleDateString(),
-    mood: walkData.mood,
-    distance: walkData.distanceKm,
-    duration
-  };
-
-  const logs =
-    JSON.parse(localStorage.getItem("walkLogs") || "[]");
-
-  logs.push(logEntry);
-  localStorage.setItem("walkLogs", JSON.stringify(logs));
-
-  displayLogs();
-  alert("散歩を記録しました！");
-}
-
-function displayLogs() {
-  const logs =
-    JSON.parse(localStorage.getItem("walkLogs") || "[]");
-
-  const area = document.getElementById("logArea");
-  area.innerHTML = "<b>散歩履歴（直近5件）</b><br>";
-
-  logs.slice(-5).reverse().forEach(log => {
-    area.innerHTML +=
-      `${log.date}｜${log.mood}｜${log.distance}km｜${log.duration}分<br>`;
-  });
-}
-
-displayLogs();
-</script>
-
+<script src="script.js"></script>
 </body>
 </html>
